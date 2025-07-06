@@ -2,6 +2,7 @@ import json
 import pandas as pd
 from pathlib import Path
 import pytest
+from pandas import DatetimeTZDtype
 
 from src.spotify_dna.ingestion import load_streaming_history
 
@@ -69,7 +70,7 @@ def test_load_streaming_history(tmp_path):
     assert len(df) == 1
 
     # ts column must be datetime with UTC tz
-    assert pd.api.types.is_datetime64tz_dtype(df['ts'])
+    assert isinstance(df['ts'].dtype, DatetimeTZDtype)
 
     # essential columns must exist
     for col in [
