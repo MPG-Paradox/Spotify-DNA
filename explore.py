@@ -3,106 +3,52 @@ import matplotlib.pyplot as plt
 
 from src.spotify_dna.ingestion import load_streaming_history
 from src.spotify_dna.analytics import (
+    top_songs,
     top_artists,
-    plot_top_artists,
     peak_listening_hours,
+    top_song_pairs,
+    recommend_similar_tracks,
+    plot_top_artists,
     plot_peak_hours,
 )
-
-def humanize_duration(seconds: float) -> str:
-    """
-    Turn a raw number of seconds into "Xd Yh Zm Ws" form.
-    """
-    days = int(seconds // 86400)
-    rem = seconds % 86400
-    hours = int(rem // 3600)
-    rem %= 3600
-    minutes = int(rem // 60)
-    secs = int(rem % 60)
-
-    parts = []
-    if days:
-        parts.append(f"{days}d")
-    if hours:
-        parts.append(f"{hours}h")
-    if minutes:
-        parts.append(f"{minutes}m")
-    # Always show seconds if nothing else or if >0
-    if secs or not parts:
-        parts.append(f"{secs}s")
-
-    return " ".join(parts)
-
-def get_unit_choice() -> str:
-    """
-    Prompt until the user chooses one of: sec, min, days, mix
-    """
-    choices = {'sec', 'min', 'days', 'mix'}
-    prompt = (
-        "Select unit for play time:\n"
-        "  sec  - seconds\n"
-        "  min  - minutes\n"
-        "  days - days\n"
-        "  mix  - days, hours, minutes, seconds\n"
-        "Enter choice (sec/min/days/mix): "
-    )
-    choice = ''
-    while choice not in choices:
-        choice = input(prompt).strip().lower()
-    return choice
 
 def main():
     data_dir = Path("data")
     df = load_streaming_history(data_dir)
 
-    # 1) Ask for unit
-    unit = get_unit_choice()
-    if unit == 'sec':
-        factor = 1
-        label = 'Seconds'
-    elif unit == 'min':
-        factor = 1/60
-        label = 'Minutes'
-    elif unit == 'days':
-        factor = 1/86400
-        label = 'Days'
-    else:  # mix
-        factor = None
-        label = 'Duration'
+    # 1) Top 10 songs
+    print("\nTop 10 songs by play time (seconds):")
+    print(top_songs(df, n=10).to_string(index=False))
 
-    # 2) Top Artists table
-    artists_df = top_artists(df, n=10)
-    print(f"\nTop 10 artists by play time ({label}):")
-    if factor is not None:
-        # numeric conversion
-        artists_df['play_time'] = artists_df['play_seconds'] * factor
-        print(
-            artists_df
-            .loc[:, ['master_metadata_album_artist_name', 'play_time']]
-            .to_string(index=False, header=['Artist', label])
-        )
+    # 2) Top 10 artists
+    print("\nTop 10 artists by play time (seconds):")
+    print(top_artists(df, n=10).to_string(index=False))
+
+    # 3) Peak listening hours
+    print("\nPeak listening hours (seconds):")
+    print(peak_listening_hours(df).to_string())
+
+    # 4) Top 5 song-pairs
+    print("\nTop 5 song-pairs by count (within 5 min):")
+    print(top_song_pairs(df, n=5, window_seconds=300).to_string(index=False))
+
+    # 5) Seed-based recommendations
+    seed = input("\nEnter a seed track (exact name as in your history): ").strip()
+    try:
+        recs = recommend_similar_tracks(df, seed, n=3, window_seconds=300)
+    except ValueError as e:
+        print(f"\n⚠️  {e}")
     else:
-        # humanized mix
-        artists_df['play_time'] = artists_df['play_seconds'].apply(humanize_duration)
-        print(
-            artists_df
-            .loc[:, ['master_metadata_album_artist_name', 'play_time']]
-            .to_string(index=False, header=['Artist', 'Play Time'])
-        )
+        if not recs:
+            print(f"\nNo co-play data found for '{seed}'. Try a different track.")
+        else:
+            print(f"\nTracks to go with '{seed}':")
+            for track, cnt in recs:
+                print(f"  • {track} ({cnt} co-plays)")
 
-    # 3) Peak Listening Hours table
-    peak = peak_listening_hours(df)
-    print(f"\nPeak listening hours by play time ({label}):")
-    if factor is not None:
-        peak_conv = peak * factor
-        print(peak_conv.to_string())
-    else:
-        peak_conv = peak.apply(humanize_duration)
-        print(peak_conv.to_string())
-
-    # 4) Show your charts (still in raw seconds for now)
-    fig1 = plot_top_artists(df, n=10)
-    fig2 = plot_peak_hours(df)
+    # 6) Charts (in raw seconds)
+    plot_top_artists(df, n=10)
+    plot_peak_hours(df)
     plt.show()
 
 if __name__ == "__main__":
