@@ -1,6 +1,6 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 from .feature_engineering import add_play_seconds, extract_time_features
 
 def top_songs(df: pd.DataFrame, n: int = 10) -> pd.DataFrame:
@@ -9,10 +9,11 @@ def top_songs(df: pd.DataFrame, n: int = 10) -> pd.DataFrame:
     """
     df2 = add_play_seconds(df)
     return (
-        df2.groupby('master_metadata_track_name', as_index=False)['play_seconds']
-           .sum()
-           .sort_values('play_seconds', ascending=False)
-           .head(n)
+        df2
+        .groupby('master_metadata_track_name', as_index=False)['play_seconds']
+        .sum()
+        .sort_values('play_seconds', ascending=False)
+        .head(n)
     )
 
 def top_artists(df: pd.DataFrame, n: int = 10) -> pd.DataFrame:
@@ -21,25 +22,28 @@ def top_artists(df: pd.DataFrame, n: int = 10) -> pd.DataFrame:
     """
     df2 = add_play_seconds(df)
     return (
-        df2.groupby('master_metadata_album_artist_name', as_index=False)['play_seconds']
-           .sum()
-           .sort_values('play_seconds', ascending=False)
-           .head(n)
+        df2
+        .groupby('master_metadata_album_artist_name', as_index=False)['play_seconds']
+        .sum()
+        .sort_values('play_seconds', ascending=False)
+        .head(n)
     )
 
 def top_genres(df: pd.DataFrame, n: int = 10) -> pd.DataFrame:
     """
     Return top n genres by total play time.
-    Assumes df has a 'genre' column.
+    Assumes df has a 'genre' column (string or list of strings).
     """
     df2 = add_play_seconds(df)
+    # explode if genre is a list
     if df2['genre'].dtype == object and df2['genre'].apply(lambda x: isinstance(x, list)).any():
         df2 = df2.explode('genre')
     return (
-        df2.groupby('genre', as_index=False)['play_seconds']
-           .sum()
-           .sort_values('play_seconds', ascending=False)
-           .head(n)
+        df2
+        .groupby('genre', as_index=False)['play_seconds']
+        .sum()
+        .sort_values('play_seconds', ascending=False)
+        .head(n)
     )
 
 def peak_listening_hours(df: pd.DataFrame) -> pd.Series:
@@ -52,7 +56,7 @@ def peak_listening_hours(df: pd.DataFrame) -> pd.Series:
 def songs_played_together(df: pd.DataFrame, window_seconds: int = 300) -> pd.DataFrame:
     """
     Identify pairs of tracks listened to within 'window_seconds' of each other.
-    Returns DataFrame ['track_a','track_b','count'] sorted by count desc.
+    Returns a DataFrame with columns ['track_a','track_b','count'], sorted by count desc.
     """
     df2 = add_play_seconds(df.sort_values('ts')).reset_index(drop=True)
     pairs = {}
@@ -64,14 +68,11 @@ def songs_played_together(df: pd.DataFrame, window_seconds: int = 300) -> pd.Dat
             key = tuple(sorted((a, b)))
             pairs[key] = pairs.get(key, 0) + 1
 
-    records = [
-        {'track_a': a, 'track_b': b, 'count': cnt}
-        for (a, b), cnt in pairs.items()
-    ]
+    records = [{'track_a': a, 'track_b': b, 'count': cnt} for (a, b), cnt in pairs.items()]
     return (
         pd.DataFrame.from_records(records)
-          .sort_values('count', ascending=False)
-          .reset_index(drop=True)
+        .sort_values('count', ascending=False)
+        .reset_index(drop=True)
     )
 
 def top_song_pairs(
@@ -94,33 +95,36 @@ def recommend_similar_tracks(
     Return up to n tracks most frequently played within window_seconds of seed_track.
     Raises ValueError if seed_track not in history.
     """
-    # 1) Check seed existence
+    # 1) Ensure the seed appears in the history
     if seed_track not in df['master_metadata_track_name'].values:
         raise ValueError(f"No plays of '{seed_track}' found in your history.")
 
     # 2) Build co-occurrence table
     pairs = songs_played_together(df, window_seconds)
 
-    # 3) Filter for rows involving the seed
+    # 3) Filter for any row involving the seed
     mask = (pairs['track_a'] == seed_track) | (pairs['track_b'] == seed_track)
     sub = pairs[mask].copy()
     if sub.empty:
         return []
 
-    # 4) Identify the “other” track
+    # 4) Identify the “other” track in each pair
     sub['other'] = sub.apply(
-        lambda r: r['track_b'] if r['track_a'] == seed_track else r['track_a'],
+        lambda row: row['track_b'] if row['track_a'] == seed_track else row['track_a'],
         axis=1
     )
 
-    # 5) Sum counts per other track, sort, take top n
+    # 5) Sum counts per other track, sort, and take extra for de-duplication
     recs = (
         sub.groupby('other')['count']
            .sum()
            .sort_values(ascending=False)
-           .head(n)
+           .head(n * 2)
     )
-    return list(recs.items())
+
+    # 6) Exclude the seed itself and return top n
+    recs_list = [(track, cnt) for track, cnt in recs.items() if track != seed_track]
+    return recs_list[:n]
 
 # ----- PLOTTING HELPERS -----
 
@@ -141,6 +145,6 @@ def plot_peak_hours(df: pd.DataFrame) -> plt.Figure:
     ax.set_title("Peak Listening Hours")
     ax.set_xlabel("Hour of Day")
     ax.set_ylabel("Play Seconds")
-    ax.set_xticks(range(0,24,2))
+    ax.set_xticks(range(0, 24, 2))
     fig.tight_layout()
     return fig
