@@ -1,16 +1,39 @@
-# secrets & caches
+# --- secrets & runtime ---
 .env
 .env.*
-*.env
-.spotipy_cache*
+*.key
+*.pem
+*.p12
 .cache*
 __pycache__/
+*.pyc
 
-# personal data
+# --- local data ---
 data/*.json
-outputs/
+data/*.csv
 
-# OS/IDE
-.DS_Store
-.idea/
+# --- IDE & tooling ---
 .vscode/
+.idea/
+*.code-workspace
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- builds / reports ---
+dist/
+build/
+.eggs/
+*.egg-info/
+htmlcov/
+.coverage*
+*.log
+
+# --- notebooks / checkpoints ---
+.ipynb_checkpoints/
+
+# --- other local ---
+*.swp
+*.swo
